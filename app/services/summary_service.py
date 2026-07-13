@@ -1,10 +1,25 @@
 import logging
+import time
 from typing import Optional
+
 from groq import Groq
+
+from app.concurrency import run_sync
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 MODEL = "llama-3.1-8b-instant"
+
+
+def _call_groq(prompt: str) -> str:
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=150,
+        temperature=0.7,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def _build_prompt(driver, team, metric, session, race, year, data_points, fastest_lap):
@@ -58,17 +73,19 @@ async def generate_summary(
     prompt = _build_prompt(driver, team, metric, session, race, year, data_points, fastest_lap)
     if not prompt:
         return f"Telemetry data loaded for {driver}. Summary generation is temporarily unavailable."
+    
+    start_time = time.perf_counter()
+    logger.info(f"[Groq] Requesting completion for {driver} ({metric}) using model {MODEL}...")
     try:
-        client = Groq(api_key=settings.GROQ_API_KEY)
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=150,
-            temperature=0.7,
+        summary = await run_sync(_call_groq, prompt)
+        duration = time.perf_counter() - start_time
+        logger.info(
+            f"[Groq] Summary generated for {driver} {metric} completed in "
+            f"{duration:.4f}s ({len(summary)} chars)"
         )
-        summary = response.choices[0].message.content.strip()
-        logger.info(f"Groq summary generated for {driver} {metric} ({len(summary)} chars)")
         return summary
     except Exception as e:
-        logger.error(f"Groq API failed for {driver} {metric}: {e}")
+        duration = time.perf_counter() - start_time
+        logger.error(f"[Groq] API failed for {driver} {metric} after {duration:.4f}s: {e}")
         return f"Telemetry data loaded for {driver}. Summary generation is temporarily unavailable."
+
