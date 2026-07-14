@@ -14,7 +14,7 @@ services:
         sync: false        # set manually in Render dashboard
       - key: JWT_SECRET
         generateValue: true
-      - key: GEMINI_API_KEY
+      - key: GROQ_API_KEY
         sync: false        # set manually in Render dashboard
       - key: FASTF1_CACHE_DIR
         value: /tmp/fastf1
